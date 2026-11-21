@@ -65,8 +65,10 @@ public class UsmLauncherActivity extends Activity {
 
     /* The recompilation uses fixed addresses: it only works with this build.
      * USM.exe 1.0.0.1, Treyarch, 5,926,912 bytes. */
-    private static final long EXE_SIZE = 5926912L;
-    private static final String EXE_SHA1 = "66c58c6e96ad96a1713f86fb903af1192e8bc8f5";
+    private static final long EXE_SIZE_1 = 5926912L;
+    private static final String EXE_SHA1_1 = "66c58c6e96ad96a1713f86fb903af1192e8bc8f5";
+    private static final long EXE_SIZE_2 = 5636096L;
+    private static final String EXE_SHA1_2 = "13c652b4a1fe66df5c8cda274601bb2077c69d17";
 
     private static final String CHANNEL = "https://youtube.com/@hail-games1?si=MgrsWaIA8fw7UJQf";
 
@@ -344,7 +346,7 @@ public class UsmLauncherActivity extends Activity {
         t2.setLetterSpacing(0.02f);
         left.addView(t2);
 
-        TextView sub = tv("Recompilação estática — o executável original rodando nativo, sem emulador.", 11, MUTED, regular);
+        TextView sub = tv("Static Recompilation — original PC executable running natively on ARM64 with Vulkan, no emulator.", 11, MUTED, regular);
         sub.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(dp(330), ViewGroup.LayoutParams.WRAP_CONTENT);
         sl.topMargin = dp(10);
@@ -357,11 +359,11 @@ public class UsmLauncherActivity extends Activity {
         alp.topMargin = dp(22);
         left.addView(actions, alp);
 
-        playButton = button("JOGAR", true);
+        playButton = button("PLAY", true);
         tap(playButton, this::play);
         actions.addView(playButton, new LinearLayout.LayoutParams(dp(190), dp(56)));
 
-        TextView cfg = button("CONFIGURAÇÕES", false);
+        TextView cfg = button("SETTINGS", false);
         tap(cfg, () -> showScreen(true));
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(190), dp(56));
         clp.leftMargin = dp(12);
@@ -381,7 +383,7 @@ public class UsmLauncherActivity extends Activity {
         rlp.leftMargin = dp(26);
         row.addView(right, rlp);
 
-        sectionTitle(right, "PASTA DO JOGO");
+        sectionTitle(right, "GAME FOLDER");
 
         folderText = tv("", 13, TEXT, medium);
         folderText.setMaxLines(2);
@@ -402,7 +404,7 @@ public class UsmLauncherActivity extends Activity {
         bsl.topMargin = dp(8);
         right.addView(buildStatus, bsl);
 
-        TextView pick = button("ESCOLHER PASTA", false);
+        TextView pick = button("CHOOSE FOLDER", false);
         tap(pick, () -> {
             /* the game reads the folder with plain file calls: ask for file
              * access first (only shown once), then pick */
@@ -432,13 +434,13 @@ public class UsmLauncherActivity extends Activity {
         tap(back, () -> showScreen(false));
         head.addView(back, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
-        TextView title = tv("CONFIGURAÇÕES", 20, TEXT, black);
+        TextView title = tv("SETTINGS", 20, TEXT, black);
         title.setLetterSpacing(0.10f);
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         tlp.leftMargin = dp(14);
         head.addView(title, tlp);
 
-        TextView reset = tv("RESTAURAR PADRÕES", 10, MUTED, medium);
+        TextView reset = tv("RESTORE DEFAULTS", 10, MUTED, medium);
         reset.setLetterSpacing(0.14f);
         reset.setPadding(dp(12), dp(10), dp(12), dp(10));
         reset.setBackground(press(shape(0x0AFFFFFF, 100, 0x1FFFFFFF, 1f)));
@@ -456,19 +458,19 @@ public class UsmLauncherActivity extends Activity {
 
         /* left card: controls */
         LinearLayout left = card();
-        sectionTitle(left, "CONTROLES");
-        toggle(left, "touch", "Controles de toque", "Camada de toque sobre o jogo: direcional, botões e câmera.", true);
+        sectionTitle(left, "CONTROLS");
+        toggle(left, "touch", "Touch Controls", "On-screen overlay: analog stick, action buttons, and camera look.", true);
         divider(left);
-        toggle(left, "hudctx", "HUD contextual", "Nos menus mostra só A e Start; no jogo, todos os botões.", false);
+        toggle(left, "hudctx", "Contextual HUD", "In menus shows only A and Start; in game shows all buttons.", false);
         divider(left);
-        toggle(left, "nintendo", "Layout Nintendo", "Troca A/B e X/Y (para quem vem do Switch).", false);
+        toggle(left, "nintendo", "Nintendo Layout", "Swap A/B and X/Y button layout.", false);
         divider(left);
-        toggle(left, "caminverty", "Inverter eixo Y da câmera", "Inverte a direção vertical ao deslizar para olhar.", false);
+        toggle(left, "caminverty", "Invert Camera Y-Axis", "Inverts vertical look direction when swiping.", false);
         divider(left);
 
-        TextView cs1 = tv("Sensibilidade da câmera", 15, TEXT, medium);
+        TextView cs1 = tv("Camera Sensitivity", 15, TEXT, medium);
         left.addView(cs1);
-        TextView cs2 = tv("Ajusta a velocidade de rotação ao deslizar o dedo.", 11, MUTED, regular);
+        TextView cs2 = tv("Adjusts camera rotation speed when swiping to look.", 11, MUTED, regular);
         cs2.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams cs2p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -499,9 +501,9 @@ public class UsmLauncherActivity extends Activity {
 
         divider(left);
 
-        TextView dz1 = tv("Zona morta do analógico", 15, TEXT, medium);
+        TextView dz1 = tv("Analog Stick Deadzone", 15, TEXT, medium);
         left.addView(dz1);
-        TextView dz2 = tv("Raio central inicial que não registra movimento para evitar desvios.", 11, MUTED, regular);
+        TextView dz2 = tv("Center deadzone radius to prevent thumbstick drift.", 11, MUTED, regular);
         dz2.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams dz2p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -532,9 +534,9 @@ public class UsmLauncherActivity extends Activity {
 
         divider(left);
 
-        TextView hm1 = tv("Controles de personagem", 15, TEXT, medium);
+        TextView hm1 = tv("Character Adaptation", 15, TEXT, medium);
         left.addView(hm1);
-        TextView hm2 = tv("Alterna automaticamente botões e ícones entre Homem-Aranha e Venom.", 11, MUTED, regular);
+        TextView hm2 = tv("Automatically adapts buttons and icons between Spider-Man and Venom.", 11, MUTED, regular);
         hm2.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams hm2p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -568,13 +570,13 @@ public class UsmLauncherActivity extends Activity {
 
         /* right card: video + diagnostics */
         LinearLayout right = card();
-        sectionTitle(right, "VÍDEO E DIAGNÓSTICO");
-        toggle(right, "vsync", "Sincronia vertical", "Limita o framerate ao do display. Desligue para medir o teto.", true);
+        sectionTitle(right, "VIDEO & DIAGNOSTICS");
+        toggle(right, "vsync", "Vertical Sync", "Limits framerate to display refresh rate. Turn off for uncapped FPS.", true);
         divider(right);
 
-        TextView l1 = tv("Nível de log", 15, TEXT, medium);
+        TextView l1 = tv("Log Level", 15, TEXT, medium);
         right.addView(l1);
-        TextView l2 = tv("Debug grava muito e pesa no framerate — use só para diagnosticar.", 11, MUTED, regular);
+        TextView l2 = tv("Debug produces extensive logs and impacts framerate — use only for diagnostics.", 11, MUTED, regular);
         l2.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams l2p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -585,7 +587,7 @@ public class UsmLauncherActivity extends Activity {
         seg.setOrientation(LinearLayout.HORIZONTAL);
         seg.setBackground(shape(0x0AFFFFFF, 100, 0x1FFFFFFF, 1f));
         seg.setPadding(dp(4), dp(4), dp(4), dp(4));
-        String[] names = {"DESLIGADO", "NORMAL", "DEBUG"};
+        String[] names = {"OFF", "NORMAL", "DEBUG"};
         for (int i = 0; i < names.length; i++) {
             final int level = i;
             TextView chip = tv(names[i], 10, MUTED, medium);
@@ -608,10 +610,9 @@ public class UsmLauncherActivity extends Activity {
 
         /* full width card: which Vulkan driver the game runs on */
         LinearLayout drv = card();
-        sectionTitle(drv, "DRIVER DE GPU");
+        sectionTitle(drv, "GPU DRIVER");
         drv.addView(tv("Vulkan", 15, TEXT, medium));
-        TextView dsub = tv("Sistema usa o driver da Qualcomm. Um driver importado (Turnip) é usado "
-                + "no lugar dele — resolve bugs e às vezes destrava o jogo em Adreno. arm64.", 11, MUTED, regular);
+        TextView dsub = tv("System uses default Qualcomm GPU driver. An imported driver (Turnip/Mesa) can be used instead on Adreno GPUs.", 11, MUTED, regular);
         dsub.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams dsubp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -625,7 +626,7 @@ public class UsmLauncherActivity extends Activity {
         dlp.topMargin = dp(8);
         drv.addView(driverList, dlp);
 
-        TextView imp = tv("IMPORTAR DRIVER (.ZIP)", 11, TEXT, medium);
+        TextView imp = tv("IMPORT DRIVER (.ZIP)", 11, TEXT, medium);
         imp.setLetterSpacing(0.10f);
         imp.setGravity(Gravity.CENTER);
         imp.setBackground(press(shape(0x0DFFFFFF, 100, 0x33FFFFFF, 1.2f)));
@@ -732,7 +733,7 @@ public class UsmLauncherActivity extends Activity {
         paintCamSensChips();
         paintDeadzoneChips();
         paintHeroModeChips();
-        Toast.makeText(this, "Padrões restaurados", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Defaults restored", Toast.LENGTH_SHORT).show();
     }
 
     private void showScreen(boolean settings) {
@@ -878,7 +879,7 @@ public class UsmLauncherActivity extends Activity {
         if (req != REQ_FOLDER || res != RESULT_OK || data == null || data.getData() == null) return;
         String path = treeToPath(data.getData());
         if (path == null) {
-            folderStatus.setText("Local não é uma pasta comum; escolha no armazenamento interno ou no cartão SD.");
+            folderStatus.setText("Location is not a standard directory; choose from internal storage or SD card.");
             folderStatus.setTextColor(AMBER);
             return;
         }
@@ -915,14 +916,14 @@ public class UsmLauncherActivity extends Activity {
     private List<String> checkFolder(String path) {
         List<String> bad = new ArrayList<>();
         sawUnreadable = false;
-        if (path == null) { bad.add("nenhuma pasta escolhida"); return bad; }
+        if (path == null) { bad.add("no folder selected"); return bad; }
         File d = new File(path);
-        if (!d.isDirectory()) { bad.add("pasta não encontrada"); return bad; }
+        if (!d.isDirectory()) { bad.add("folder not found"); return bad; }
         File data = findCi(d, "data");
-        if (data == null) bad.add("falta a pasta data");
-        else if (!data.canRead()) { bad.add("sem permissão para ler a pasta data"); sawUnreadable = true; }
-        if (findCi(d, "USM.exe") == null) bad.add("falta USM.exe");
-        if (findCi(d, "binkw32.dll") == null) bad.add("falta binkw32.dll");
+        if (data == null) bad.add("missing Data folder");
+        else if (!data.canRead()) { bad.add("no permission to read Data folder"); sawUnreadable = true; }
+        if (findCi(d, "USM.exe") == null) bad.add("missing USM.exe");
+        if (findCi(d, "binkw32.dll") == null) bad.add("missing binkw32.dll");
         return bad;
     }
 
@@ -930,18 +931,17 @@ public class UsmLauncherActivity extends Activity {
         if (folderText == null) return;
         String path = prefs.getString("folder", null);
         folderText.setText(path == null
-                ? "Copie o conteúdo da sua pasta \"Game Files\" para qualquer lugar fora de Android/data "
-                  + "(ex.: Armazenamento interno/USM) e escolha aqui."
+                ? "Copy your PC game files (USM.exe, binkw32.dll, and Data/) to any folder outside Android/data (e.g. Internal storage/USM) and select it here."
                 : path);
         List<String> bad = checkFolder(path);
         boolean ready = bad.isEmpty();
-        folderStatus.setText(ready ? "●  Pronto para jogar" : "●  " + String.join(" · ", bad));
+        folderStatus.setText(ready ? "●  Ready to play" : "●  " + String.join(" · ", bad));
         folderStatus.setTextColor(ready ? GREEN : AMBER);
         buildStatus.setText(ready ? describeBuild(findCi(new File(path), "USM.exe")) : "");
         playButton.setEnabled(ready);
         playButton.setAlpha(ready ? 1f : 0.45f);
         if (statusLine != null) {
-            statusLine.setText(ready ? "Tudo certo. Toque em JOGAR." : "Selecione a pasta do jogo para liberar o JOGAR.");
+            statusLine.setText(ready ? "All game files verified. Tap PLAY to start." : "Select your game directory to enable PLAY.");
             statusLine.setTextColor(ready ? GREEN : MUTED);
         }
     }
@@ -949,17 +949,16 @@ public class UsmLauncherActivity extends Activity {
     /* The recompiled code is tied to one executable. Say so before Play. */
     private String describeBuild(File exe) {
         if (exe == null) return "";
-        if (exe.length() != EXE_SIZE) {
-            return "Aviso: USM.exe tem " + exe.length() + " bytes; o port foi compilado para "
-                    + EXE_SIZE + " bytes (1.0.0.1). Provavelmente não vai rodar.";
+        long len = exe.length();
+        if (len != EXE_SIZE_1 && len != EXE_SIZE_2) {
+            return "Warning: USM.exe is " + len + " bytes (expected 5,636,096 / 5,926,912). May not run.";
         }
         String sha = sha1(exe);
         if (sha == null) return "";
-        if (!sha.equals(EXE_SHA1)) {
-            return "Aviso: USM.exe SHA-1 " + sha.substring(0, 12) + "… não é o build de origem ("
-                    + EXE_SHA1.substring(0, 12) + "…). Provavelmente não vai rodar.";
+        if (!sha.equalsIgnoreCase(EXE_SHA1_1) && !sha.equalsIgnoreCase(EXE_SHA1_2)) {
+            return "Warning: USM.exe SHA-1 " + sha.substring(0, 12) + "… is an untested build. May not run.";
         }
-        return "USM.exe 1.0.0.1 · SHA-1 " + EXE_SHA1.substring(0, 12) + "… — este é o build esperado.";
+        return "USM.exe 1.0.0.1 · SHA-1 " + sha.substring(0, 12) + "… — verified retail build.";
     }
 
     private static String sha1(File f) {
@@ -1046,7 +1045,7 @@ public class UsmLauncherActivity extends Activity {
     private void refreshDrivers() {
         if (driverList == null) return;
         driverList.removeAllViews();
-        driverList.addView(driverRow("system", "Sistema (Qualcomm)", driverChoice().equals("system"), false));
+        driverList.addView(driverRow("system", "System Default (Qualcomm)", driverChoice().equals("system"), false));
         for (String n : installedDrivers()) {
             divider(driverList);
             driverList.addView(driverRow(n, n, driverChoice().equals(n), true));
@@ -1069,7 +1068,7 @@ public class UsmLauncherActivity extends Activity {
         row.addView(t, tlp);
 
         if (removable) {
-            TextView del = tv("REMOVER", 9, MUTED, medium);
+            TextView del = tv("REMOVE", 9, MUTED, medium);
             del.setLetterSpacing(0.12f);
             del.setPadding(dp(10), dp(6), dp(10), dp(6));
             tap(del, () -> deleteDriver(key));
@@ -1101,7 +1100,7 @@ public class UsmLauncherActivity extends Activity {
         try {
             startActivityForResult(i, REQ_DRIVER);
         } catch (ActivityNotFoundException e) {
-            Toast.makeText(this, "Nenhum gerenciador de arquivos encontrado", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No file manager found", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -1145,7 +1144,7 @@ public class UsmLauncherActivity extends Activity {
             String err = null;
             int files = 0;
             try (java.io.InputStream rawIn = getContentResolver().openInputStream(uri)) {
-                if (rawIn == null) throw new java.io.IOException("não foi possível abrir o arquivo");
+                if (rawIn == null) throw new java.io.IOException("could not open file");
                 java.io.BufferedInputStream in = new java.io.BufferedInputStream(rawIn, 1 << 16);
                 in.mark(8);
                 int b0 = in.read(), b1 = in.read();
@@ -1186,8 +1185,8 @@ public class UsmLauncherActivity extends Activity {
             if (err == null && lib == null) {
                 String found = listLibs(tmp, 4);
                 err = found.isEmpty()
-                        ? "o pacote não tem libvulkan.so nem libvulkan*.so"
-                        : "o pacote não tem libvulkan.so; achei " + found;
+                        ? "package contains no libvulkan.so or libvulkan*.so"
+                        : "package missing libvulkan.so; found " + found;
             }
 
             final String ferr = err;
@@ -1195,7 +1194,7 @@ public class UsmLauncherActivity extends Activity {
             final int nfiles = files;
             runOnUiThread(() -> {
                 if (ferr != null) {
-                    Toast.makeText(this, "Importação falhou: " + ferr, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Driver import failed: " + ferr, Toast.LENGTH_LONG).show();
                     return;
                 }
                 File src = flib.getParentFile();
@@ -1203,7 +1202,7 @@ public class UsmLauncherActivity extends Activity {
                  * libvulkan_freedreno.so gets it here too. */
                 File named = new File(src, "libvulkan.so");
                 if (!flib.equals(named) && !named.exists() && !copyFile(flib, named)) {
-                    Toast.makeText(this, "Não foi possível preparar o driver", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Could not prepare driver", Toast.LENGTH_LONG).show();
                     return;
                 }
                 boolean fixedStack = normalizeExecStack(named);
@@ -1211,15 +1210,15 @@ public class UsmLauncherActivity extends Activity {
                 File dst = new File(driversDir(), name);
                 for (int i = 2; dst.exists(); i++) dst = new File(driversDir(), name + "-" + i);
                 if (!src.renameTo(dst) && !copyTree(src, dst)) {
-                    Toast.makeText(this, "Não foi possível gravar em " + dst, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Could not write to " + dst, Toast.LENGTH_LONG).show();
                     return;
                 }
                 deleteRecursive(tmp);
                 prefs.edit().putString("driver", dst.getName()).apply();
                 refreshDrivers();
-                Toast.makeText(this, "Driver " + dst.getName() + " importado (" + nfiles
-                        + " arquivos" + (fixedStack ? ", pilha executável corrigida" : "")
-                        + "). Vale no próximo JOGAR.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Driver " + dst.getName() + " imported (" + nfiles
+                        + " files" + (fixedStack ? ", executable stack normalized" : "")
+                        + "). Effective on next launch.", Toast.LENGTH_LONG).show();
             });
         }).start();
     }
@@ -1366,9 +1365,9 @@ public class UsmLauncherActivity extends Activity {
             for (android.app.ApplicationExitInfo e : l) {
                 if (e.getTimestamp() < since) continue;
                 int r = e.getReason();
-                if (r == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE) reason = "falha nativa";
-                else if (r == android.app.ApplicationExitInfo.REASON_SIGNALED) reason = "sinal recebido";
-                else if (r == android.app.ApplicationExitInfo.REASON_LOW_MEMORY) reason = "memória insuficiente";
+                if (r == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE) reason = "native crash";
+                else if (r == android.app.ApplicationExitInfo.REASON_SIGNALED) reason = "signal received";
+                else if (r == android.app.ApplicationExitInfo.REASON_LOW_MEMORY) reason = "out of memory";
                 if (reason != null) break;
             }
         } catch (Exception ignored) {
@@ -1377,15 +1376,13 @@ public class UsmLauncherActivity extends Activity {
 
         final String name = new File(pending).getName();
         new AlertDialog.Builder(this)
-                .setTitle("O jogo fechou com o driver " + name)
-                .setMessage("A execução anterior terminou em " + reason + " logo depois de abrir "
-                        + "com esse driver.\n\nVoltar para o driver da GPU do aparelho? O jogo "
-                        + "abre normalmente, só sem o driver importado.")
-                .setPositiveButton("Usar o do sistema", (d, w) -> {
+                .setTitle("Game crashed with driver " + name)
+                .setMessage("The previous run ended in " + reason + " shortly after launch with this driver.\n\nRevert to system default GPU driver?")
+                .setPositiveButton("Use System Default", (d, w) -> {
                     prefs.edit().putString("driver", "system").apply();
                     refreshDrivers();
                 })
-                .setNegativeButton("Manter", null)
+                .setNegativeButton("Keep Custom Driver", null)
                 .show();
     }
 
@@ -1447,7 +1444,7 @@ public class UsmLauncherActivity extends Activity {
                 v.write(on("vsync") ? "1\n" : "0\n");
             }
         } catch (Exception ex) {
-            folderStatus.setText("Não foi possível gravar as configurações: " + ex);
+            folderStatus.setText("Could not save settings: " + ex);
             folderStatus.setTextColor(AMBER);
             return;
         }

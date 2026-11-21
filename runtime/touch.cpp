@@ -494,28 +494,170 @@ extern "C" void touch_handle_event(const SDL_Event *e) {
 
 // ---------------------------------------------------------------- drawing
 namespace {
-IDirect3DTexture9 *g_tex;      // soft-edged disc
+IDirect3DTexture9 *g_tex;        // soft-edged translucent dark disc with satin rim
+IDirect3DTexture9 *g_tex_stick;  // precision analog stick base with deadzone and cardinal ticks
+IDirect3DTexture9 *g_tex_knob;   // frosted thumb knob with center accent
+IDirect3DTexture9 *g_tex_cam;    // camera swipe hint reticle
 IDirect3DStateBlock9 *g_state;
 
 struct Vtx { float x, y, z, rhw; uint32_t color; float u, v; };
 
-void make_texture(IDirect3DDevice9 *d) {
-    const int N = 64;
-    if (FAILED(d->CreateTexture(N, N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_tex, nullptr))) return;
-    D3DLOCKED_RECT lr;
-    if (FAILED(g_tex->LockRect(0, &lr, nullptr, 0))) return;
-    for (int y = 0; y < N; y++) {
-        uint32_t *row = (uint32_t *)((uint8_t *)lr.pBits + y * lr.Pitch);
-        for (int x = 0; x < N; x++) {
-            float dx = (x + 0.5f) / N * 2 - 1, dy = (y + 0.5f) / N * 2 - 1;
-            float r = std::sqrt(dx * dx + dy * dy);
-            // translucent fill with a brighter rim
-            float a = r > 1 ? 0 : r > 0.86f ? 1 - (r - 0.86f) / 0.14f * 0.3f : 0.45f;
-            if (r > 0.97f) a *= (1 - r) / 0.03f;
-            row[x] = (uint32_t)(a * 255) << 24 | 0xFFFFFF;
+void make_textures(IDirect3DDevice9 *d) {
+    const int N = 128;
+    // 1. Button Disc Texture (g_tex)
+    if (!g_tex && SUCCEEDED(d->CreateTexture(N, N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_tex, nullptr))) {
+        D3DLOCKED_RECT lr;
+        if (SUCCEEDED(g_tex->LockRect(0, &lr, nullptr, 0))) {
+            for (int y = 0; y < N; y++) {
+                uint32_t *row = (uint32_t *)((uint8_t *)lr.pBits + y * lr.Pitch);
+                for (int x = 0; x < N; x++) {
+                    float dx = (x + 0.5f) / N * 2.0f - 1.0f;
+                    float dy = (y + 0.5f) / N * 2.0f - 1.0f;
+                    float r = std::sqrt(dx * dx + dy * dy);
+                    if (r > 1.0f) {
+                        row[x] = 0x00000000;
+                    } else if (r <= 0.86f) {
+                        float a = 0.38f + 0.10f * (r / 0.86f);
+                        uint32_t ia = (uint32_t)(a * 255.0f);
+                        row[x] = (ia << 24) | 0x181C26;
+                    } else if (r <= 0.95f) {
+                        float t = (r - 0.86f) / 0.09f;
+                        float a = 0.48f + 0.42f * (1.0f - std::fabs(t - 0.5f) * 2.0f);
+                        uint32_t ia = (uint32_t)(a * 255.0f);
+                        row[x] = (ia << 24) | 0xEFF2FB;
+                    } else {
+                        float a = 0.90f * (1.0f - r) / 0.05f;
+                        uint32_t ia = (uint32_t)(a * 255.0f);
+                        row[x] = (ia << 24) | 0xEFF2FB;
+                    }
+                }
+            }
+            g_tex->UnlockRect(0);
         }
     }
-    g_tex->UnlockRect(0);
+
+    // 2. Analog Stick Base (g_tex_stick)
+    if (!g_tex_stick && SUCCEEDED(d->CreateTexture(N, N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_tex_stick, nullptr))) {
+        D3DLOCKED_RECT lr;
+        if (SUCCEEDED(g_tex_stick->LockRect(0, &lr, nullptr, 0))) {
+            for (int y = 0; y < N; y++) {
+                uint32_t *row = (uint32_t *)((uint8_t *)lr.pBits + y * lr.Pitch);
+                for (int x = 0; x < N; x++) {
+                    float dx = (x + 0.5f) / N * 2.0f - 1.0f;
+                    float dy = (y + 0.5f) / N * 2.0f - 1.0f;
+                    float r = std::sqrt(dx * dx + dy * dy);
+                    if (r > 1.0f) {
+                        row[x] = 0x00000000;
+                    } else {
+                        uint32_t color = 0x141822;
+                        float a = 0.22f;
+                        float dz_dist = std::fabs(r - 0.20f);
+                        if (dz_dist < 0.022f) {
+                            float ring_a = (1.0f - dz_dist / 0.022f) * 0.42f;
+                            if (ring_a > a) { a = ring_a; color = 0xDDE4F5; }
+                        }
+                        float ring2_dist = std::fabs(r - 0.65f);
+                        if (ring2_dist < 0.016f) {
+                            float ring_a = (1.0f - ring2_dist / 0.016f) * 0.25f;
+                            if (ring_a > a) { a = ring_a; color = 0xB0C0DC; }
+                        }
+                        bool is_cardinal_x = (std::fabs(dx) < 0.035f && r >= 0.78f && r <= 0.93f);
+                        bool is_cardinal_y = (std::fabs(dy) < 0.035f && r >= 0.78f && r <= 0.93f);
+                        if (is_cardinal_x || is_cardinal_y) {
+                            a = 0.85f;
+                            color = 0xFFFFFF;
+                        }
+                        if (r >= 0.92f && r <= 0.97f) {
+                            float rim_a = 0.75f;
+                            if (rim_a > a) { a = rim_a; color = 0xEEF2FC; }
+                        } else if (r > 0.97f) {
+                            float rim_a = 0.75f * (1.0f - r) / 0.03f;
+                            if (rim_a > a) { a = rim_a; color = 0xEEF2FC; }
+                        }
+                        uint32_t ia = (uint32_t)(a * 255.0f);
+                        row[x] = (ia << 24) | color;
+                    }
+                }
+            }
+            g_tex_stick->UnlockRect(0);
+        }
+    }
+
+    // 3. Ergonomic Knob (g_tex_knob)
+    if (!g_tex_knob && SUCCEEDED(d->CreateTexture(N, N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_tex_knob, nullptr))) {
+        D3DLOCKED_RECT lr;
+        if (SUCCEEDED(g_tex_knob->LockRect(0, &lr, nullptr, 0))) {
+            for (int y = 0; y < N; y++) {
+                uint32_t *row = (uint32_t *)((uint8_t *)lr.pBits + y * lr.Pitch);
+                for (int x = 0; x < N; x++) {
+                    float dx = (x + 0.5f) / N * 2.0f - 1.0f;
+                    float dy = (y + 0.5f) / N * 2.0f - 1.0f;
+                    float r = std::sqrt(dx * dx + dy * dy);
+                    if (r > 1.0f) {
+                        row[x] = 0x00000000;
+                    } else {
+                        float a = 0.70f;
+                        uint32_t color = 0x283040;
+                        if (r >= 0.45f && r <= 0.58f) {
+                            float b = 1.0f - std::fabs(r - 0.515f) / 0.065f;
+                            color = 0x3D4A62;
+                            a = 0.78f + 0.12f * b;
+                        }
+                        if (r <= 0.18f) {
+                            float pip_a = 0.95f * (1.0f - r / 0.18f);
+                            a = pip_a > a ? pip_a : a;
+                            color = 0xFFFFFF;
+                        }
+                        if (r >= 0.86f && r <= 0.95f) {
+                            a = 0.92f;
+                            color = 0xF0F4FF;
+                        } else if (r > 0.95f) {
+                            a = 0.92f * (1.0f - r) / 0.05f;
+                            color = 0xF0F4FF;
+                        }
+                        uint32_t ia = (uint32_t)(a * 255.0f);
+                        row[x] = (ia << 24) | color;
+                    }
+                }
+            }
+            g_tex_knob->UnlockRect(0);
+        }
+    }
+
+    // 4. Camera Look Zone Reticle (g_tex_cam)
+    if (!g_tex_cam && SUCCEEDED(d->CreateTexture(N, N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_tex_cam, nullptr))) {
+        D3DLOCKED_RECT lr;
+        if (SUCCEEDED(g_tex_cam->LockRect(0, &lr, nullptr, 0))) {
+            for (int y = 0; y < N; y++) {
+                uint32_t *row = (uint32_t *)((uint8_t *)lr.pBits + y * lr.Pitch);
+                for (int x = 0; x < N; x++) {
+                    float dx = (x + 0.5f) / N * 2.0f - 1.0f;
+                    float dy = (y + 0.5f) / N * 2.0f - 1.0f;
+                    float r = std::sqrt(dx * dx + dy * dy);
+                    if (r > 1.0f) {
+                        row[x] = 0x00000000;
+                    } else {
+                        float a = 0.0f;
+                        uint32_t color = 0xDCE6FA;
+                        float rb = std::fabs(r - 0.90f);
+                        if (rb < 0.025f) a = (1.0f - rb / 0.025f) * 0.40f;
+                        float rc = std::fabs(r - 0.26f);
+                        if (rc < 0.022f) {
+                            float ca = (1.0f - rc / 0.022f) * 0.55f;
+                            if (ca > a) a = ca;
+                        }
+                        if ((std::fabs(dx) < 0.035f || std::fabs(dy) < 0.035f) && r >= 0.42f && r <= 0.68f) {
+                            float ta = 0.60f;
+                            if (ta > a) a = ta;
+                        }
+                        uint32_t ia = (uint32_t)(a * 255.0f);
+                        row[x] = (ia << 24) | color;
+                    }
+                }
+            }
+            g_tex_cam->UnlockRect(0);
+        }
+    }
 }
 
 /* A r is a half-size in screen-height units, and it must come out square in
@@ -562,11 +704,16 @@ const IconTex *icon(const char *key) {
 
 // The art for button i: the pressed variant while it is held, the plain icon
 // otherwise, and nothing at all when the pack does not have either.
+// Adaptive: Venom replaces web swing with tendril grab.
 const IconTex *icon_for(int i) {
+    const char *base = k_button_icon[i];
+    if (is_venom_active() && i == 1) { // B button is tendril for Venom
+        base = "tendril";
+    }
     char press[32];
-    snprintf(press, sizeof press, "on/%s", k_button_icon[i]);
+    snprintf(press, sizeof press, "on/%s", base);
     const IconTex *t = (g_buttons & k_buttons[i].bit) ? icon(press) : nullptr;
-    return t ? t : icon(k_button_icon[i]);
+    return t ? t : icon(base);
 }
 
 // <game>/port/icons, and (in case the ZIP was unpacked flat) <game>/port itself
@@ -665,7 +812,7 @@ void touch_draw(IDirect3DDevice9 *d) {
                   : idle < 3000 ? 1.f - 0.55f * (idle - 2500) / 500.f
                   : 0.45f;   /* stays readable: 0.3 made the buttons easy to miss */
     }
-    if (!g_tex) make_texture(d);
+    if (!g_tex || !g_tex_stick || !g_tex_knob || !g_tex_cam) make_textures(d);
     if (!g_state) d->CreateStateBlock(D3DSBT_ALL, &g_state);
     if (!g_tex || !g_state) { bb->Release(); return; }
     g_state->Capture();
@@ -710,36 +857,56 @@ void touch_draw(IDirect3DDevice9 *d) {
 
     if (!g_art_tried) load_icons(d);
 
-    /* Two passes: the plain discs (one soft-edged texture, one batch) and then
-     * one draw per action icon from its own texture -- full 0..1 UVs, so a quad
-     * can only ever show the icon it asked for. A button is drawn exactly once,
-     * with its icon when the pack has one and with the disc when it does not,
-     * and never while the contextual HUD hides it. The stick stays procedural
-     * on purpose: the analog needs no art, so a missing pack cannot take it
-     * away. */
-    Vtx vd[6 * (NB + 6)];   /* stick, knob, disc fallbacks, camera hint, 2 cursor discs */
+    /* High-fidelity translucent dark HUD with responsive tactile feedback */
+    Vtx vd[6 * (NB + 16)];
     int nd = 0;
     float sx, sy;
     stick_pos(&sx, &sy);
-    quad(vd + 6 * nd++, sx, sy, STICK_R, w, h, dim(0x90FFFFFF));
-    float kx = sx + g_stick_x * STICK_R / g_aspect, ky = sy + g_stick_y * STICK_R;
-    quad(vd + 6 * nd++, kx, ky, STICK_R * 0.45f, w, h, dim(0xD0FFFFFF));
+
+    // 1. Draw Stick Base
+    {
+        Vtx sv[6];
+        uint32_t col = dim(is_venom_active() ? 0xC0BA80FF : 0xD0FFFFFF);
+        quad(sv, sx, sy, STICK_R, w, h, col);
+        d->SetTexture(0, g_tex_stick ? g_tex_stick : g_tex);
+        d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, sv, sizeof(Vtx));
+    }
+
+    // 2. Draw Stick Knob
+    {
+        float kx = sx + g_stick_x * STICK_R / g_aspect, ky = sy + g_stick_y * STICK_R;
+        bool stick_held = (g_stick_x * g_stick_x + g_stick_y * g_stick_y) > 0.0001f;
+        float knob_r = STICK_R * 0.44f * (stick_held ? 1.05f : 1.0f);
+        uint32_t col = dim(is_venom_active() ? 0xFFE070FF : 0xFFFFFFFF);
+        Vtx kv[6];
+        quad(kv, kx, ky, knob_r, w, h, col);
+        d->SetTexture(0, g_tex_knob ? g_tex_knob : g_tex);
+        d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, kv, sizeof(Vtx));
+    }
+
+    // 3. Pass 1: Draw translucent dark backing discs for buttons and cursor
     for (int i = 0; i < NB; i++) {
-        if (!button_shown(i) || icon_for(i)) continue;   /* icon buttons: pass 2 */
+        if (!button_shown(i)) continue;
         float bx, by;
         button_pos(k_buttons[i], &bx, &by);
         bool on = (g_buttons & k_buttons[i].bit) != 0;
-        quad(vd + 6 * nd++, bx, by, k_buttons[i].r, w, h,
-             dim((k_buttons[i].color & 0xFFFFFF) | (on ? 0xF0u : 0x90u) << 24));
+        float r = k_buttons[i].r * (on ? 0.93f : 1.0f);
+        uint32_t col;
+        if (is_venom_active()) {
+            col = dim(on ? 0xFFBA40FF : 0xD5E0D5FF);
+        } else {
+            col = dim(on ? 0xFFFFFFFF : 0xD8FFFFFF);
+        }
+        quad(vd + 6 * nd++, bx, by, r, w, h, col);
+    }
+    // OK button backing disc
+    {
+        float r = OK_R * (g_ok ? 0.93f : 1.0f);
+        uint32_t col = dim(g_ok ? 0xFFFFFFFF : 0xD8FFFFFF);
+        quad(vd + 6 * nd++, OK_X, OK_Y, r, w, h, col);
     }
 #ifdef GAME_USM
-    /* Camera zone hint: only while the finger is dragging there. */
-    uint32_t lookage = SDL_GetTicks() - g_look_ms;
-    if (g_look_ms && lookage < 900) {
-        quad(vd + 6 * nd++, CAMPAD_X, CAMPAD_Y, CAMPAD_R, w, h,
-             dim((uint32_t)((900 - lookage) * 0x50 / 900) << 24 | 0xFFFFFF));
-    }
-    /* Virtual cursor at the last pointer touch (the menus are clicked with it). */
+    // Virtual cursor at the last pointer touch (menus are clicked with it)
     uint32_t age = SDL_GetTicks() - g_ptr_ms;
     if (g_ptr_ms && age < 1500) {
         uint32_t al = (uint32_t)((1500 - age) * 0xFF / 1500);
@@ -751,6 +918,20 @@ void touch_draw(IDirect3DDevice9 *d) {
         d->SetTexture(0, g_tex);
         d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2 * nd, vd, sizeof(Vtx));
     }
+
+#ifdef GAME_USM
+    // Camera zone hint: reticle displayed while swiping
+    uint32_t lookage = SDL_GetTicks() - g_look_ms;
+    if (g_look_ms && lookage < 900) {
+        Vtx cv[6];
+        quad(cv, CAMPAD_X, CAMPAD_Y, CAMPAD_R, w, h,
+             dim((uint32_t)((900 - lookage) * 0x70 / 900) << 24 | 0xFFFFFF));
+        d->SetTexture(0, g_tex_cam ? g_tex_cam : g_tex);
+        d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, cv, sizeof(Vtx));
+    }
+#endif
+
+    // 4. Pass 2: Clean white glyphs / action icons on top
     for (int i = 0; i < NB; i++) {
         if (!button_shown(i)) continue;
         const IconTex *it = icon_for(i);
@@ -758,18 +939,22 @@ void touch_draw(IDirect3DDevice9 *d) {
         float bx, by;
         button_pos(k_buttons[i], &bx, &by);
         bool on = (g_buttons & k_buttons[i].bit) != 0;
+        float r = k_buttons[i].r * (on ? 0.72f : 0.76f);
         Vtx q[6];
-        quad(q, bx, by, k_buttons[i].r * 1.06f, w, h, dim(on ? 0xFFFFFFFF : 0xE0FFFFFF));
+        quad(q, bx, by, r, w, h, dim(on ? 0xFFFFFFFF : 0xF2FFFFFF));
         d->SetTexture(0, it->tex);
         d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, q, sizeof(Vtx));
     }
-    {   /* Confirm: drawn after the action buttons, so the contextual HUD can
-         * never hide the one control a menu needs. */
-        const IconTex *ci = icon("ok");
-        Vtx q[6];
-        quad(q, OK_X, OK_Y, OK_R * 1.06f, w, h, dim(g_ok ? 0xFFFFFFFF : 0xE2FFFFFF));
-        d->SetTexture(0, ci ? ci->tex : g_tex);
-        d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, q, sizeof(Vtx));
+    {   // Confirm icon on top of OK disc
+        const IconTex *ci = icon(g_ok ? "on/ok" : "ok");
+        if (!ci) ci = icon("ok");
+        if (ci) {
+            float r = OK_R * (g_ok ? 0.72f : 0.76f);
+            Vtx q[6];
+            quad(q, OK_X, OK_Y, r, w, h, dim(g_ok ? 0xFFFFFFFF : 0xF2FFFFFF));
+            d->SetTexture(0, ci->tex);
+            d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, q, sizeof(Vtx));
+        }
     }
     d->EndScene();
     d->SetRenderTarget(0, old);
@@ -789,8 +974,12 @@ extern "C" void input_set_skip_cutscenes(int on);
 extern "C" int g_log_level;
 static void save_cfg() {
     if (FILE *f = fopen(cfg_path().c_str(), "w")) {
-        /* 4th field: log level (0 off, 1 normal, 2 debug); read in main() */
-        fprintf(f, "%d %d %d %d %d\n", g_touch_on, g_nintendo, g_skip_cutscenes, g_log_level, g_hud_ctx);
+        /* 10 fields:
+         * touch, nintendo, skip, log_level, hud_ctx, stick_dz, stick_sens, cam_sens, cam_invert_y, hero_mode */
+        fprintf(f, "%d %d %d %d %d %.2f %.2f %.2f %d %d\n",
+                g_touch_on, g_nintendo, g_skip_cutscenes, g_log_level, g_hud_ctx,
+                g_stick_deadzone, g_stick_sensitivity, g_cam_sensitivity,
+                (int)g_cam_invert_y, g_hero_mode);
         fclose(f);
     }
 }
@@ -1188,17 +1377,27 @@ extern "C" void touch_setup_guest(void) {
 #endif
 #ifdef GAME_USM
     /* Ultimate Spider-Man: the Android launcher writes touch.cfg
-     * ("<touch> <nintendo> <skip> <log> <hudctx>"). */
+     * ("<touch> <nintendo> <skip> <log> <hudctx> <dz> <sens> <camsens> <invert_y> <hero_mode>"). */
     if (FILE *f = fopen(cfg_path().c_str(), "r")) {
-        int t = 1, n = 0, k = 0, lg = 1, hc = 0;
-        int got = fscanf(f, "%d %d %d %d %d", &t, &n, &k, &lg, &hc);
+        int t = 1, n = 0, k = 0, lg = 1, hc = 0, inv = 0, hm = 0;
+        float dz = 0.15f, sens = 1.0f, csens = 1.0f;
+        int got = fscanf(f, "%d %d %d %d %d %f %f %f %d %d",
+                         &t, &n, &k, &lg, &hc, &dz, &sens, &csens, &inv, &hm);
         if (got >= 1) {
-            g_touch_on = t != 0; g_nintendo = n != 0;
-            g_skip_cutscenes = k != 0; g_hud_ctx = hc != 0;
+            g_touch_on = t != 0;
+            if (got >= 2) g_nintendo = n != 0;
+            if (got >= 3) g_skip_cutscenes = k != 0;
+            if (got >= 5) g_hud_ctx = hc != 0;
+            if (got >= 6 && dz >= 0.0f && dz <= 0.8f) g_stick_deadzone = dz;
+            if (got >= 7 && sens >= 0.1f && sens <= 3.0f) g_stick_sensitivity = sens;
+            if (got >= 8 && csens >= 0.1f && csens <= 5.0f) g_cam_sensitivity = csens;
+            if (got >= 9) g_cam_invert_y = inv != 0;
+            if (got >= 10 && hm >= 0 && hm <= 2) g_hero_mode = hm;
         }
         fclose(f);
-        LOG("touch: touch.cfg %d field(s): touch=%d nintendo=%d skip=%d log=%d hudctx=%d",
-            got, g_touch_on, g_nintendo, g_skip_cutscenes, lg, g_hud_ctx);
+        LOG("touch: touch.cfg %d field(s): touch=%d nintendo=%d skip=%d log=%d hudctx=%d dz=%.2f sens=%.2f csens=%.2f invy=%d hero=%d",
+            got, g_touch_on, g_nintendo, g_skip_cutscenes, lg, g_hud_ctx,
+            g_stick_deadzone, g_stick_sensitivity, g_cam_sensitivity, (int)g_cam_invert_y, g_hero_mode);
     }
     input_set_nintendo(g_nintendo);
     input_set_skip_cutscenes(g_skip_cutscenes);
@@ -1223,16 +1422,25 @@ extern "C" void touch_setup_guest(void) {
 #endif
     if (!available()) return;
     if (FILE *f = fopen(cfg_path().c_str(), "r")) {
-        int t = 1, n = 0, k = 0, lg = 1, hc = 0;
-        /* 5th field: contextual HUD on/off (default off = the classic HUD) */
-        int got = fscanf(f, "%d %d %d %d %d", &t, &n, &k, &lg, &hc);
+        int t = 1, n = 0, k = 0, lg = 1, hc = 0, inv = 0, hm = 0;
+        float dz = 0.15f, sens = 1.0f, csens = 1.0f;
+        int got = fscanf(f, "%d %d %d %d %d %f %f %f %d %d",
+                         &t, &n, &k, &lg, &hc, &dz, &sens, &csens, &inv, &hm);
         if (got >= 1) {
-            g_touch_on = t != 0; g_nintendo = n != 0; g_skip_cutscenes = k != 0;
-            g_hud_ctx = hc != 0;
+            g_touch_on = t != 0;
+            if (got >= 2) g_nintendo = n != 0;
+            if (got >= 3) g_skip_cutscenes = k != 0;
+            if (got >= 5) g_hud_ctx = hc != 0;
+            if (got >= 6 && dz >= 0.0f && dz <= 0.8f) g_stick_deadzone = dz;
+            if (got >= 7 && sens >= 0.1f && sens <= 3.0f) g_stick_sensitivity = sens;
+            if (got >= 8 && csens >= 0.1f && csens <= 5.0f) g_cam_sensitivity = csens;
+            if (got >= 9) g_cam_invert_y = inv != 0;
+            if (got >= 10 && hm >= 0 && hm <= 2) g_hero_mode = hm;
         }
         fclose(f);
-        LOG("touch: touch.cfg %d field(s): touch=%d nintendo=%d skip=%d log=%d hudctx=%d",
-            got, g_touch_on, g_nintendo, g_skip_cutscenes, lg, g_hud_ctx);
+        LOG("touch: touch.cfg %d field(s): touch=%d nintendo=%d skip=%d log=%d hudctx=%d dz=%.2f sens=%.2f csens=%.2f invy=%d hero=%d",
+            got, g_touch_on, g_nintendo, g_skip_cutscenes, lg, g_hud_ctx,
+            g_stick_deadzone, g_stick_sensitivity, g_cam_sensitivity, (int)g_cam_invert_y, g_hero_mode);
     }
     input_set_nintendo(g_nintendo);
     input_set_skip_cutscenes(g_skip_cutscenes);

@@ -85,7 +85,13 @@ public class UsmLauncherActivity extends Activity {
     private FrameLayout homeScreen, settingsScreen;
     private final Map<String, CompoundButton> toggles = new LinkedHashMap<>();
     private final TextView[] logChips = new TextView[3];
+    private final TextView[] camSensChips = new TextView[4];
+    private final TextView[] deadzoneChips = new TextView[3];
+    private final TextView[] heroModeChips = new TextView[3];
     private int logLevel = 1;
+    private float camSens = 1.0f;
+    private float stickDeadzone = 0.15f;
+    private int heroMode = 0;
     private boolean pendingPick, pendingPlay;  /* continue once the storage prompt is answered */
     private boolean sawUnreadable;             /* last checkFolder() hit a permission wall */
     private boolean askedAllFiles;
@@ -105,6 +111,9 @@ public class UsmLauncherActivity extends Activity {
          * install had chosen. */
         if (prefs.contains("loglevel")) logLevel = prefs.getInt("loglevel", 1);
         else logLevel = prefs.getBoolean("logoff", false) ? 0 : prefs.getBoolean("debuglog", false) ? 2 : 1;
+        camSens = prefs.getFloat("cam_sens", 1.0f);
+        stickDeadzone = prefs.getFloat("stick_dz", 0.15f);
+        heroMode = prefs.getInt("hero_mode", 0);
         buildUi();
         refreshFolder();
         checkDriverCrash();
@@ -453,6 +462,105 @@ public class UsmLauncherActivity extends Activity {
         toggle(left, "hudctx", "HUD contextual", "Nos menus mostra só A e Start; no jogo, todos os botões.", false);
         divider(left);
         toggle(left, "nintendo", "Layout Nintendo", "Troca A/B e X/Y (para quem vem do Switch).", false);
+        divider(left);
+        toggle(left, "caminverty", "Inverter eixo Y da câmera", "Inverte a direção vertical ao deslizar para olhar.", false);
+        divider(left);
+
+        TextView cs1 = tv("Sensibilidade da câmera", 15, TEXT, medium);
+        left.addView(cs1);
+        TextView cs2 = tv("Ajusta a velocidade de rotação ao deslizar o dedo.", 11, MUTED, regular);
+        cs2.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams cs2p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        cs2p.topMargin = dp(3);
+        left.addView(cs2, cs2p);
+
+        LinearLayout csSeg = new LinearLayout(this);
+        csSeg.setOrientation(LinearLayout.HORIZONTAL);
+        csSeg.setBackground(shape(0x0AFFFFFF, 100, 0x1FFFFFFF, 1f));
+        csSeg.setPadding(dp(4), dp(4), dp(4), dp(4));
+        String[] csNames = {"0.75x", "1.0x", "1.5x", "2.0x"};
+        float[] csVals = {0.75f, 1.0f, 1.5f, 2.0f};
+        for (int i = 0; i < csNames.length; i++) {
+            final float val = csVals[i];
+            TextView chip = tv(csNames[i], 10, MUTED, medium);
+            chip.setGravity(Gravity.CENTER);
+            chip.setLetterSpacing(0.10f);
+            tap(chip, () -> setCamSens(val));
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(0, dp(34), 1f);
+            csSeg.addView(chip, clp);
+            camSensChips[i] = chip;
+        }
+        LinearLayout.LayoutParams csSegp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        csSegp.topMargin = dp(10);
+        left.addView(csSeg, csSegp);
+        paintCamSensChips();
+
+        divider(left);
+
+        TextView dz1 = tv("Zona morta do analógico", 15, TEXT, medium);
+        left.addView(dz1);
+        TextView dz2 = tv("Raio central inicial que não registra movimento para evitar desvios.", 11, MUTED, regular);
+        dz2.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams dz2p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        dz2p.topMargin = dp(3);
+        left.addView(dz2, dz2p);
+
+        LinearLayout dzSeg = new LinearLayout(this);
+        dzSeg.setOrientation(LinearLayout.HORIZONTAL);
+        dzSeg.setBackground(shape(0x0AFFFFFF, 100, 0x1FFFFFFF, 1f));
+        dzSeg.setPadding(dp(4), dp(4), dp(4), dp(4));
+        String[] dzNames = {"10%", "15%", "20%"};
+        float[] dzVals = {0.10f, 0.15f, 0.20f};
+        for (int i = 0; i < dzNames.length; i++) {
+            final float val = dzVals[i];
+            TextView chip = tv(dzNames[i], 10, MUTED, medium);
+            chip.setGravity(Gravity.CENTER);
+            chip.setLetterSpacing(0.10f);
+            tap(chip, () -> setDeadzone(val));
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(0, dp(34), 1f);
+            dzSeg.addView(chip, clp);
+            deadzoneChips[i] = chip;
+        }
+        LinearLayout.LayoutParams dzSegp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        dzSegp.topMargin = dp(10);
+        left.addView(dzSeg, dzSegp);
+        paintDeadzoneChips();
+
+        divider(left);
+
+        TextView hm1 = tv("Controles de personagem", 15, TEXT, medium);
+        left.addView(hm1);
+        TextView hm2 = tv("Alterna automaticamente botões e ícones entre Homem-Aranha e Venom.", 11, MUTED, regular);
+        hm2.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams hm2p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        hm2p.topMargin = dp(3);
+        left.addView(hm2, hm2p);
+
+        LinearLayout hmSeg = new LinearLayout(this);
+        hmSeg.setOrientation(LinearLayout.HORIZONTAL);
+        hmSeg.setBackground(shape(0x0AFFFFFF, 100, 0x1FFFFFFF, 1f));
+        hmSeg.setPadding(dp(4), dp(4), dp(4), dp(4));
+        String[] hmNames = {"AUTO", "SPIDER", "VENOM"};
+        for (int i = 0; i < hmNames.length; i++) {
+            final int mode = i;
+            TextView chip = tv(hmNames[i], 10, MUTED, medium);
+            chip.setGravity(Gravity.CENTER);
+            chip.setLetterSpacing(0.10f);
+            tap(chip, () -> setHeroMode(mode));
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(0, dp(34), 1f);
+            hmSeg.addView(chip, clp);
+            heroModeChips[i] = chip;
+        }
+        LinearLayout.LayoutParams hmSegp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        hmSegp.topMargin = dp(10);
+        left.addView(hmSeg, hmSegp);
+        paintHeroModeChips();
 
         LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         llp.rightMargin = dp(12);
@@ -557,9 +665,59 @@ public class UsmLauncherActivity extends Activity {
         }
     }
 
+    private void setCamSens(float s) {
+        camSens = s;
+        prefs.edit().putFloat("cam_sens", s).apply();
+        paintCamSensChips();
+    }
+
+    private void paintCamSensChips() {
+        float[] vals = {0.75f, 1.0f, 1.5f, 2.0f};
+        for (int i = 0; i < camSensChips.length; i++) {
+            if (camSensChips[i] == null) continue;
+            boolean on = Math.abs(vals[i] - camSens) < 0.05f;
+            camSensChips[i].setBackground(on ? gradient(0xFFF15A5A, RED_DK, 100) : shape(0x00000000, 100, 0, 0f));
+            camSensChips[i].setTextColor(on ? 0xFFFFFFFF : MUTED);
+        }
+    }
+
+    private void setDeadzone(float dz) {
+        stickDeadzone = dz;
+        prefs.edit().putFloat("stick_dz", dz).apply();
+        paintDeadzoneChips();
+    }
+
+    private void paintDeadzoneChips() {
+        float[] vals = {0.10f, 0.15f, 0.20f};
+        for (int i = 0; i < deadzoneChips.length; i++) {
+            if (deadzoneChips[i] == null) continue;
+            boolean on = Math.abs(vals[i] - stickDeadzone) < 0.03f;
+            deadzoneChips[i].setBackground(on ? gradient(0xFFF15A5A, RED_DK, 100) : shape(0x00000000, 100, 0, 0f));
+            deadzoneChips[i].setTextColor(on ? 0xFFFFFFFF : MUTED);
+        }
+    }
+
+    private void setHeroMode(int m) {
+        heroMode = m;
+        prefs.edit().putInt("hero_mode", m).apply();
+        paintHeroModeChips();
+    }
+
+    private void paintHeroModeChips() {
+        for (int i = 0; i < heroModeChips.length; i++) {
+            if (heroModeChips[i] == null) continue;
+            boolean on = i == heroMode;
+            heroModeChips[i].setBackground(on ? gradient(0xFFF15A5A, RED_DK, 100) : shape(0x00000000, 100, 0, 0f));
+            heroModeChips[i].setTextColor(on ? 0xFFFFFFFF : MUTED);
+        }
+    }
+
     private void resetDefaults() {
         prefs.edit().putBoolean("touch", true).putBoolean("hudctx", false)
                 .putBoolean("nintendo", false).putBoolean("vsync", true)
+                .putBoolean("caminverty", false)
+                .putFloat("cam_sens", 1.0f).putFloat("stick_dz", 0.15f)
+                .putInt("hero_mode", 0)
                 .putInt("loglevel", 1).apply();
         for (Map.Entry<String, CompoundButton> e : toggles.entrySet()) {
             String k = e.getKey();
@@ -567,7 +725,13 @@ public class UsmLauncherActivity extends Activity {
             e.getValue().setChecked(def);
         }
         logLevel = 1;
+        camSens = 1.0f;
+        stickDeadzone = 0.15f;
+        heroMode = 0;
         paintLogChips();
+        paintCamSensChips();
+        paintDeadzoneChips();
+        paintHeroModeChips();
         Toast.makeText(this, "Padrões restaurados", Toast.LENGTH_SHORT).show();
     }
 
@@ -1242,19 +1406,43 @@ public class UsmLauncherActivity extends Activity {
                 if (line != null) {
                     String[] p = line.trim().split(" ");
                     if (p.length >= 3) skip = Integer.parseInt(p[2]);
+                    if (p.length >= 6) {
+                        float dz = Float.parseFloat(p[5]);
+                        if (dz >= 0.05f && dz <= 0.5f) stickDeadzone = dz;
+                    }
+                    if (p.length >= 8) {
+                        float cs = Float.parseFloat(p[7]);
+                        if (cs >= 0.2f && cs <= 4.0f) camSens = cs;
+                    }
+                    if (p.length >= 9 && toggles.get("caminverty") == null) {
+                        prefs.edit().putBoolean("caminverty", "1".equals(p[8])).apply();
+                    }
+                    if (p.length >= 10) {
+                        int hm = Integer.parseInt(p[9]);
+                        if (hm >= 0 && hm <= 2) heroMode = hm;
+                    }
                 }
             } catch (Exception ignored) {
                 /* unreadable or old format: keep skip at 0 */
             }
         }
         try (Writer w = new OutputStreamWriter(new FileOutputStream(cfg))) {
-            /* touch nintendo skip-cutscenes log-level contextual-hud
-             * (log: 0 off, 1 normal, 2 debug) */
+            /* 10 fields:
+             * touch nintendo skip-cutscenes log-level contextual-hud
+             * stick_dz stick_sens cam_sens cam_invert_y hero_mode */
+            float stickDz = prefs.getFloat("stick_dz", stickDeadzone);
+            float stickSens = 1.0f;
+            float cSens = prefs.getFloat("cam_sens", camSens);
+            int camInvertY = on("caminverty") ? 1 : 0;
+            int hMode = prefs.getInt("hero_mode", heroMode);
             w.write((on("touch") ? "1" : "0") + " "
                     + (on("nintendo") ? "1" : "0") + " "
                     + skip + " "
                     + logLevel + " "
-                    + (on("hudctx") ? "1" : "0") + "\n");
+                    + (on("hudctx") ? "1" : "0") + " "
+                    + String.format(java.util.Locale.US, "%.2f %.2f %.2f", stickDz, stickSens, cSens) + " "
+                    + camInvertY + " "
+                    + hMode + "\n");
             try (Writer v = new OutputStreamWriter(new FileOutputStream(new File(save, "vsync.cfg")))) {
                 v.write(on("vsync") ? "1\n" : "0\n");
             }

@@ -942,7 +942,13 @@ namespace dxvk {
         ? m_module.constu32(0)
         : m_module.constu32(1);
 
-      std::array<uint32_t, 2> indices = { structIdx, relativeIdx };
+      uint32_t accessIdx = relativeIdx;
+      if (relative) {
+        uint32_t maxIdx = m_module.constu32(m_layout->floatCount > 0 ? m_layout->floatCount - 1 : 0);
+        accessIdx = m_module.opUMin(m_module.defIntType(32, 0), relativeIdx, maxIdx);
+      }
+
+      std::array<uint32_t, 2> indices = { structIdx, accessIdx };
 
       uint32_t typeId = getVectorTypeId(result.type);
       uint32_t ptrId = m_module.opAccessChain(
@@ -1734,11 +1740,13 @@ namespace dxvk {
       // Convert float -> int32_t
       // and vice versa
       if (dst.type.ctype == DxsoScalarType::Sint32) {
-        // We need to floor for VS 1.1 and below, the documentation is a dirty stinking liar.
-        if (m_programInfo.majorVersion() < 2 && m_programInfo.minorVersion() < 2)
-          result.id = m_module.opFloor(getVectorTypeId(src0.type), src0.id);
-        else
-          result.id = m_module.opRound(getVectorTypeId(src0.type), src0.id);
+        // VS 1.1 vertex skinning shaders calculate relative address indices (a0.x)
+        // using floating-point operations (e.g. mad r0, v3, c90.x, c90.y).
+        // On mobile GPUs (Adreno/Mali), precision variance can result in (N - epsilon),
+        // which opFloor turns into (N - 1), misaligning bone matrix constant lookups.
+        // Rounding to nearest integer matches the official D3D9 specification and ensures
+        // stable bone matrix indexing.
+        result.id = m_module.opRound(getVectorTypeId(src0.type), src0.id);
 
         result.id = m_module.opConvertFtoS(typeId, result.id);
       }

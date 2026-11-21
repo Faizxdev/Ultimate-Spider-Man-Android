@@ -46,7 +46,7 @@ namespace dxvk {
     this->shaderModel                   = config.getOption<int32_t>     ("d3d9.shaderModel",                   3);
     this->evictManagedOnUnlock          = config.getOption<bool>        ("d3d9.evictManagedOnUnlock",          false);
     this->dpiAware                      = config.getOption<bool>        ("d3d9.dpiAware",                      true);
-    this->strictConstantCopies          = config.getOption<bool>        ("d3d9.strictConstantCopies",          false);
+    this->strictConstantCopies          = config.getOption<bool>        ("d3d9.strictConstantCopies",          true);
     this->strictPow                     = config.getOption<bool>        ("d3d9.strictPow",                     true);
     this->lenientClear                  = config.getOption<bool>        ("d3d9.lenientClear",                  false);
     this->numBackBuffers                = config.getOption<int32_t>     ("d3d9.numBackBuffers",                0);
@@ -61,7 +61,7 @@ namespace dxvk {
     this->swvpIntCount                  = config.getOption<int32_t>     ("d3d9.swvpIntCount",                  caps::MaxOtherConstantsSoftware);
     this->swvpBoolCount                 = config.getOption<int32_t>     ("d3d9.swvpBoolCount",                 caps::MaxOtherConstantsSoftware);
     this->disableA8RT                   = config.getOption<bool>        ("d3d9.disableA8RT",                   false);
-    this->invariantPosition             = config.getOption<bool>        ("d3d9.invariantPosition",             false);
+    this->invariantPosition             = config.getOption<bool>        ("d3d9.invariantPosition",             true);
     this->memoryTrackTest               = config.getOption<bool>        ("d3d9.memoryTrackTest",               false);
     this->supportVCache                 = config.getOption<bool>        ("d3d9.supportVCache",                 vendorId == 0x10de);
     this->enableDialogMode              = config.getOption<bool>        ("d3d9.enableDialogMode",              false);
@@ -75,7 +75,7 @@ namespace dxvk {
     this->tearFree                      = config.getOption<Tristate>    ("d3d9.tearFree",                      Tristate::Auto);
     this->alphaTestWiggleRoom           = config.getOption<bool>        ("d3d9.alphaTestWiggleRoom",           false);
     this->apitraceMode                  = config.getOption<bool>        ("d3d9.apitraceMode",                  false);
-    this->deviceLocalConstantBuffers    = config.getOption<bool>        ("d3d9.deviceLocalConstantBuffers",    false);
+    this->deviceLocalConstantBuffers    = config.getOption<bool>        ("d3d9.deviceLocalConstantBuffers",    true);
 
     // If we are not Nvidia, enable general hazards.
     this->generalHazards = adapter != nullptr
@@ -85,8 +85,8 @@ namespace dxvk {
                             0, 0);
     applyTristate(this->generalHazards, config.getOption<Tristate>("d3d9.generalHazards", Tristate::Auto));
 
-    this->d3d9FloatEmulation = config::FloatEmulationByDefault; // <-- Future Extension?
-    applyTristate(this->d3d9FloatEmulation, config.getOption<Tristate>("d3d9.floatEmulation", Tristate::Auto));
+    this->d3d9FloatEmulation = true;
+    applyTristate(this->d3d9FloatEmulation, config.getOption<Tristate>("d3d9.floatEmulation", Tristate::True));
   }
 
 }

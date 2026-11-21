@@ -982,6 +982,9 @@ public class UsmLauncherActivity extends Activity {
         File dst = new File(game, "port/icons");
         dst.mkdirs();
         try {
+            copyAsset("dxvk.conf", new File(game, "dxvk.conf"));
+        } catch (Exception ignored) {}
+        try {
             String[] names = getAssets().list("icons");
             if (names == null) return;
             for (String n : names) copyAsset("icons/" + n, new File(dst, n));

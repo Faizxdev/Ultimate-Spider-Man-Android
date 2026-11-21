@@ -1,0 +1,24 @@
+# Build outputs
+.gradle/
+build/
+*/build/
+*.apk
+*.aab
+*.so
+
+# Recompilation outputs (derived from user game files, must never be committed)
+gen/
+analysis/
+Game Files/
+Data/
+data/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*.log
+local.properties
+.cxx/

@@ -19,33 +19,53 @@
 #include <cmath>
 #include <string>
 
-extern "C" void input_set_virtual(uint16_t buttons, int16_t lx, int16_t ly, int16_t rx, int16_t ry,
-                                  uint8_t lt, uint8_t rt);
+extern "C" {
+    void input_set_virtual(uint16_t buttons, int16_t lx, int16_t ly, int16_t rx, int16_t ry,
+                           uint8_t lt, uint8_t rt);
+    void input_set_nintendo(int on);
+    void input_set_skip_cutscenes(int on);
+    void platform_window_size(int *w, int *h);
+    void platform_mouse_add(int dx, int dy);
+    void *platform_window(void);
+    void user32_screen(int *w, int *h);
+    void user32_cursor_set(int x, int y);
+    void user32_mouse_button(int btn, int down);
+    void user32_pointer_fingers(int n);
+    uint32_t d3d9_last_frame_draws(void);
+    int user32_cursor_count(void);
+    unsigned user32_cursor_reads(void);
+}
 
 namespace {
 // Layout in units of screen height, anchored to a corner (ax, ay in {0,1}).
+// Translucent dark aesthetic with clean white glyphs, no generic neon buttons.
 struct Button { const char *name; uint16_t bit; float ax, ay, dx, dy, r; uint32_t color; };
+
+// Ergonomic layout:
+// Bottom-right Action Cluster: Jump (Space/A), Attack (Q/X), Web Swing/Throw Web (C/B),
+// Dodge/Kick (E/Y), Web Zip/Special/BlackButton (V/RB).
+// Contextual Action: Wall Crawl (F/LB).
+// Top-Left Menu: Pause/Menu (Esc/Start), Back (M/Back).
 const Button k_buttons[] = {
-    {"A", 0x1000, 1, 1, -0.20f, -0.14f, 0.075f, 0xFF40C040},
-    {"B", 0x2000, 1, 1, -0.08f, -0.27f, 0.075f, 0xFFE04040},
-    {"X", 0x4000, 1, 1, -0.32f, -0.27f, 0.075f, 0xFF4080F0},
-    {"Y", 0x8000, 1, 1, -0.20f, -0.40f, 0.075f, 0xFFF0D040},
-    {"LB", 0x0100, 0, 0, 0.12f, 0.30f, 0.06f, 0xFFB0B0B0},
-    {"RB", 0x0200, 1, 0, -0.12f, 0.30f, 0.06f, 0xFFB0B0B0},
-    {"Back", 0x0020, 0, 0, 0.36f, 0.07f, 0.045f, 0xFFD0D0D0},
-    {"Start", 0x0010, 1, 0, -0.36f, 0.07f, 0.045f, 0xFFFFFFFF},
+    {"A",     0x1000, 1.0f, 1.0f, -0.19f, -0.13f, 0.076f, 0x60141824}, // Jump (A)
+    {"B",     0x2000, 1.0f, 1.0f, -0.09f, -0.25f, 0.078f, 0x60141824}, // Web Swing / Throw Web (B, hold-to-swing)
+    {"X",     0x4000, 1.0f, 1.0f, -0.31f, -0.23f, 0.074f, 0x60141824}, // Attack / Punch (X)
+    {"Y",     0x8000, 1.0f, 1.0f, -0.20f, -0.36f, 0.070f, 0x60141824}, // Dodge / Kick (Y)
+    {"RB",    0x0200, 1.0f, 1.0f, -0.33f, -0.38f, 0.064f, 0x60141824}, // Web Zip / Special / BlackButton (RB)
+    {"LB",    0x0100, 0.0f, 0.0f,  0.10f,  0.32f, 0.060f, 0x60141824}, // Wall Crawl (LB)
+    {"Start", 0x0010, 0.0f, 0.0f,  0.08f,  0.08f, 0.052f, 0x60141824}, // Top-Left Pause/Menu (Start)
+    {"Back",  0x0020, 0.0f, 0.0f,  0.20f,  0.08f, 0.046f, 0x60141824}, // Top-Left Back (Back)
 };
 const int NB = sizeof k_buttons / sizeof k_buttons[0];
-const float STICK_X = 0.24f, STICK_Y = -0.26f, STICK_R = 0.17f; // from bottom-left
-// the camera zone has no widget, only this hint, shown while a finger drags
-const float CAMPAD_X = 0.70f, CAMPAD_Y = 0.44f, CAMPAD_R = 0.17f; // from top-left
-/* Confirm button. Every menu in this game is keyboard driven: the list highlight
- * moves with the arrows (the stick already sends those) and Enter selects, while
- * Space is reserved for "resume" -- the pause screen literally says PRESS
- * "SPACE" TO RESUME. A therefore cannot confirm anything, it un-pauses, and no
- * other button sends Enter. This one does, and nothing else: in gameplay Enter
- * is unbound, so it is inert there. */
-const float OK_X = 0.44f, OK_Y = 0.86f, OK_R = 0.072f;
+
+// Bottom-left 360-degree analog joystick geometry
+const float STICK_X = 0.22f, STICK_Y = -0.24f, STICK_R = 0.16f; // from bottom-left
+
+// Right-side camera swipe indicator hint
+const float CAMPAD_X = 0.70f, CAMPAD_Y = 0.44f, CAMPAD_R = 0.16f; // from top-left
+
+// Confirm button (Enter / OK). In menus, stick navigates and OK confirms.
+const float OK_X = 0.50f, OK_Y = 0.88f, OK_R = 0.068f;
 bool g_ok;
 
 struct Finger { SDL_FingerID id; int button; bool stick; bool look; bool ptr, ok; float x, y; bool used; };
@@ -55,6 +75,17 @@ bool g_available, g_decided, g_seen, g_was_on;
 bool g_touch_on = true;       // the player's choice, kept in <save>/touch.cfg
 uint16_t g_buttons;
 float g_aspect = 16.f / 9.f;  // width / height of the screen
+
+// Configurable controller settings:
+// 1. Joystick deadzone & sensitivity
+float g_stick_deadzone = 0.15f;     // 15% radius deadzone
+float g_stick_sensitivity = 1.0f;  // 1.0x sensitivity
+// 2. Camera sensitivity & invert-Y
+float g_cam_sensitivity = 1.0f;    // 1.0x sensitivity
+bool g_cam_invert_y = false;       // normal Y by default
+// 6. Character mode: 0=Auto-detect, 1=Spider-Man, 2=Venom
+int g_hero_mode = 0;
+
 // Touch pointer (GAME_USM): where the last pointer finger landed, for the
 // on-screen cursor, and when the camera zone was last dragged, for its hint.
 float g_ptr_x = 0.5f, g_ptr_y = 0.5f;
@@ -66,8 +97,6 @@ float g_hud_mul = 1.f;
 // The game's VSync option byte, which the menu toggles and the settings save.
 const uint32_t G_VSYNC_OPTION = 0x9D0F3C;
 // Aspect ratio: the setting (pcconfig "Widescreen") and the menu's copy of it.
-// Its menu row is Skip Cutscenes now, so it stays at 3, "From Screen-Res"
-// (0 = 4:3, the game's default, 1 = 16:9, 2 = 16:10).
 const uint32_t G_ASPECT = 0x94C070, G_ASPECT_MENU = 0xAD7294, ASPECT_FROM_RES = 3;
 
 bool available() {
@@ -83,24 +112,17 @@ bool available() {
     return g_available;
 }
 
+void touch_release_all();
+
 bool enabled() {
     if (!available()) return false;
-    // The game loads and resets its own VSync value; ours always wins, and only
-    // the menu changes it (f_6C42C0 below).
 #ifdef GAME_BATMAN
     M8(G_VSYNC_OPTION) = g_touch_on;
     M32(G_ASPECT_MENU) = ASPECT_FROM_RES;
 #endif
     bool on = g_touch_on;
     if (g_was_on && !on) {
-        // Switched off in the menu: release everything the overlay was holding.
-        for (auto &g : g_fingers) g.used = false;
-        g_stick_x = g_stick_y = 0;
-        g_buttons = 0;
-        input_set_virtual(0, 0, 0, 0, 0, 0, 0);
-#ifdef GAME_USM
-        user32_pointer_fingers(0); // let go of the left button
-#endif
+        touch_release_all();
     }
     g_was_on = on;
     return on;
@@ -120,23 +142,8 @@ void stick_pos(float *x, float *y) {
 // Contextual HUD (opt-in: touch.cfg 5th field). Off keeps the classic HUD
 // exactly. On, the menus show only the buttons that do something there.
 bool g_hud_ctx;
-// The decision for the frame being drawn. hud_menu_step() runs once per frame
-// (from touch_draw): button_shown() is asked several times per frame -- once
-// per button while drawing, again on every hit test -- so counting there would
-// advance the hysteresis eight times per frame and latch almost immediately.
 bool g_hud_menu;
 
-// Menu = the game is not drawing the world. Measured, not inferred: USM's
-// front end never calls GetCursorPos (0 calls in a whole session on device,
-// see docs/RECON.md) and never moves the ShowCursor counter, so the two
-// "obvious" signals the port used to poll were dead on this game -- the
-// overlay sat in "game" forever and the contextual HUD never appeared.
-// What does differ is the frame the guest composes, so count the guest's draw
-// calls per frame in the D3D9 bridge and switch on that, with enough
-// hysteresis that one light frame (a fade, a HUD-only pass) cannot flip it.
-// Measured on device: the front end composes 1..2 draws per frame, a frame of
-// the world 25..444. The first threshold of 32 sat inside the gameplay range
-// and flipped the overlay to "menu" mid-game; 8 is clear of both ends.
 #ifndef HUD_MENU_DRAWS
 #define HUD_MENU_DRAWS 8
 #endif
@@ -158,12 +165,7 @@ bool hud_menu_step() {
 }
 
 #ifdef GAME_USM
-extern "C" int user32_cursor_count(void);
-extern "C" unsigned user32_cursor_reads(void);
-/* Calibration for the draw-count threshold: once a second, while the
- * contextual HUD is on, print the min..max draw count of the last second
- * together with the state the overlay settled on. One minute in a menu and
- * one in the world is enough to see the gap, and to confirm the switch fired. */
+/* Calibration for the draw-count threshold */
 void hud_probe() {
     static uint32_t last, lo = ~0u, hi;
     uint32_t d = d3d9_last_frame_draws();
@@ -182,16 +184,56 @@ void hud_probe() {
 }
 #endif
 
+// Helper: case-insensitive substring check
+static bool str_contains_ci(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return false;
+    for (; *haystack; haystack++) {
+        const char *h = haystack, *n = needle;
+        while (*h && *n && tolower((unsigned char)*h) == tolower((unsigned char)*n)) {
+            h++; n++;
+        }
+        if (!*n) return true;
+    }
+    return false;
+}
+
+// Adaptive controls: detect if playing as Venom vs Spider-Man
+bool is_venom_active() {
+    if (g_hero_mode == 1) return false; // forced Spider-Man
+    if (g_hero_mode == 2) return true;  // forced Venom
+#ifdef GAME_USM
+    // World/game manager is at 0x95c770, hero entity pointer at [mgr + 0x230]
+    uint32_t mgr = M32(0x95c770);
+    if (mgr >= 0x10000 && mgr < 0xE0000000) {
+        uint32_t hero = M32(mgr + 0x230);
+        if (hero >= 0x10000 && hero < 0xE0000000) {
+            uint32_t char_info = M32(hero + 0x48);
+            if (char_info >= 0x10000 && char_info < 0xE0000000) {
+                uint32_t name_ptr = M32(char_info + 0x2c);
+                if (name_ptr >= 0x10000 && name_ptr < 0xE0000000) {
+                    const char *name = (const char *)(MEM + name_ptr);
+                    if (str_contains_ci(name, "venom")) return true;
+                }
+            }
+        }
+    }
+#endif
+    return false;
+}
+
 // Buttons shown in the current context. A: Enter (confirm). Start: Esc (back/pause).
 bool button_shown(int i) {
     if (!g_hud_ctx) return true;
-    if (!g_hud_menu) return true;
-    /* Menus: only Start stays. The list is walked with the stick (it presses the
-     * arrows) and confirmed with the OK button, which is drawn outside this set
-     * and is therefore always there. A is excluded on purpose -- it also presses
-     * Space, and Space is "resume" on the pause screen, so offering it in a menu
-     * means the menu closes instead of opening Options. */
-    return strcmp(k_buttons[i].name, "Start") == 0;
+    if (g_hud_menu) {
+        /* Menus: only Start stays. The list is navigated with stick and selected with OK. */
+        return strcmp(k_buttons[i].name, "Start") == 0;
+    }
+    // Gameplay: if playing as Venom, Wall Crawl (LB) is hidden in contextual HUD
+    // because Venom does not wall crawl like Spider-Man
+    if (is_venom_active() && strcmp(k_buttons[i].name, "LB") == 0) {
+        return false;
+    }
+    return true;
 }
 
 int hit_button(float x, float y) {
@@ -199,107 +241,196 @@ int hit_button(float x, float y) {
         if (!button_shown(i)) continue;
         float bx, by;
         button_pos(k_buttons[i], &bx, &by);
-        float dx = (x - bx) * g_aspect, dy = y - by, r = k_buttons[i].r * 1.3f;
+        float dx = (x - bx) * g_aspect, dy = y - by, r = k_buttons[i].r * 1.30f;
         if (dx * dx + dy * dy < r * r) return i;
     }
     return -1;
 }
 
 bool hit_ok(float x, float y) {
-    float dx = (x - OK_X) * g_aspect, dy = y - OK_Y, r = OK_R * 1.25f;
+    float dx = (x - OK_X) * g_aspect, dy = y - OK_Y, r = OK_R * 1.30f;
     return dx * dx + dy * dy < r * r;
 }
 
 void update() {
     uint16_t b = 0;
-    float sx = 0, sy = 0;
+    float sx = 0.0f, sy = 0.0f;
     bool ok = false;
+    bool stick_active = false;
+
     for (auto &f : g_fingers) {
         if (!f.used) continue;
         if (f.ok) { ok = true; continue; }
         if (f.stick) {
             float cx, cy;
             stick_pos(&cx, &cy);
-            sx = (f.x - cx) * g_aspect / STICK_R;
-            sy = (f.y - cy) / STICK_R;
-            float l = std::sqrt(sx * sx + sy * sy);
-            if (l > 1) { sx /= l; sy /= l; }
+            float dx = (f.x - cx) * g_aspect;
+            float dy = (f.y - cy);
+            float dist = std::sqrt(dx * dx + dy * dy);
+            float max_r = STICK_R;
+
+            // 360-degree analog calculation with dead-zone and sensitivity
+            if (dist < g_stick_deadzone * max_r) {
+                sx = 0.0f;
+                sy = 0.0f;
+            } else {
+                float norm = (dist - g_stick_deadzone * max_r) / (max_r * (1.0f - g_stick_deadzone));
+                if (norm > 1.0f) norm = 1.0f;
+                norm *= g_stick_sensitivity;
+                if (norm > 1.0f) norm = 1.0f;
+
+                float angle = std::atan2(dy, dx);
+                sx = std::cos(angle) * norm;
+                sy = std::sin(angle) * norm;
+            }
+
+            // Visual knob position tracking thumb up to max_r
+            float k_dist = (dist > max_r) ? max_r : dist;
+            float k_angle = (dist > 0.0001f) ? std::atan2(dy, dx) : 0.0f;
+            g_stick_x = (dist > 0.0001f) ? (std::cos(k_angle) * (k_dist / max_r)) : 0.0f;
+            g_stick_y = (dist > 0.0001f) ? (std::sin(k_angle) * (k_dist / max_r)) : 0.0f;
+            stick_active = true;
         } else {
-            // a finger may slide between buttons
+            // A finger may slide between action buttons
             int h = hit_button(f.x, f.y);
             if (h >= 0) f.button = h;
-            /* a finger on a button that the context just hid lets go of it */
             if (f.button >= 0 && !button_shown(f.button)) f.button = -1;
             if (f.button >= 0) b |= k_buttons[f.button].bit;
         }
     }
+
+    if (!stick_active) {
+        g_stick_x = 0.0f;
+        g_stick_y = 0.0f;
+    }
+
+    // Stuck-button prevention watchdog: if no fingers are used, force-release all buttons
+    bool any_used = false;
+    for (auto &g : g_fingers) {
+        if (g.used) { any_used = true; break; }
+    }
+    if (!any_used) {
+        b = 0;
+        ok = false;
+        g_stick_x = 0.0f;
+        g_stick_y = 0.0f;
+        sx = 0.0f;
+        sy = 0.0f;
+    }
+
     /* 0x0040 is the overlay-only bit that input.c maps to Enter alone. */
     if (ok) b |= 0x0040;
     g_ok = ok;
     g_buttons = b;
-    g_stick_x = sx;
-    g_stick_y = sy;
-    input_set_virtual(b, (int16_t)(sx * 32767), (int16_t)(-sy * 32767), 0, 0, 0, 0);
+    input_set_virtual(b, (int16_t)(sx * 32767.0f), (int16_t)(-sy * 32767.0f), 0, 0, 0, 0);
+}
+
+// Release all touch states to guarantee no stuck buttons on blur/background/exit
+void touch_release_all() {
+    for (auto &g : g_fingers) {
+        g.used = false;
+        g.button = -1;
+        g.stick = false;
+        g.look = false;
+        g.ptr = false;
+        g.ok = false;
+    }
+    g_stick_x = 0.0f;
+    g_stick_y = 0.0f;
+    g_buttons = 0;
+    g_ok = false;
+    input_set_virtual(0, 0, 0, 0, 0, 0, 0);
+#ifdef GAME_USM
+    user32_pointer_fingers(0);
+#endif
+    update();
 }
 } // namespace
 
 extern "C" void touch_handle_event(const SDL_Event *e) {
     if (!enabled()) return;
-    float x, y;
-    SDL_FingerID id;
+
+    // Safety: window blur, focus lost, app in background -> release all touches immediately
+    if (e->type == SDL_WINDOWEVENT) {
+        if (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+            e->window.event == SDL_WINDOWEVENT_HIDDEN ||
+            e->window.event == SDL_WINDOWEVENT_MINIMIZED ||
+            e->window.event == SDL_WINDOWEVENT_LEAVE) {
+            touch_release_all();
+            return;
+        }
+    }
+    if (e->type == SDL_APP_WILLENTERBACKGROUND || e->type == SDL_APP_DIDENTERBACKGROUND) {
+        touch_release_all();
+        return;
+    }
+
+    float x = 0.0f, y = 0.0f;
+    SDL_FingerID id = 0;
     bool down = false, up = false;
     switch (e->type) {
-    case SDL_FINGERDOWN: down = true; /* fallthrough */
+    case SDL_FINGERDOWN:
+        down = true;
+        x = e->tfinger.x; y = e->tfinger.y; id = e->tfinger.fingerId;
+        break;
     case SDL_FINGERMOTION:
-        x = e->tfinger.x; y = e->tfinger.y; id = e->tfinger.fingerId; break;
+        x = e->tfinger.x; y = e->tfinger.y; id = e->tfinger.fingerId;
+        break;
     case SDL_FINGERUP:
-        up = true; x = e->tfinger.x; y = e->tfinger.y; id = e->tfinger.fingerId; break;
+        up = true;
+        x = e->tfinger.x; y = e->tfinger.y; id = e->tfinger.fingerId;
+        break;
 #ifndef __ANDROID__
     case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP: case SDL_MOUSEMOTION: {
-        int w, h;
-        SDL_GetWindowSize(SDL_GetWindowFromID(e->button.windowID), &w, &h);
+        int w = 1280, h = 720;
+        platform_window_size(&w, &h);
+        if (w <= 0) w = 1280;
+        if (h <= 0) h = 720;
         if (e->type == SDL_MOUSEMOTION && !(e->motion.state & SDL_BUTTON_LMASK)) return;
-        x = (float)(e->type == SDL_MOUSEMOTION ? e->motion.x : e->button.x) / w;
-        y = (float)(e->type == SDL_MOUSEMOTION ? e->motion.y : e->button.y) / h;
+        x = (float)(e->type == SDL_MOUSEMOTION ? e->motion.x : e->button.x) / (float)w;
+        y = (float)(e->type == SDL_MOUSEMOTION ? e->motion.y : e->button.y) / (float)h;
         id = 1;
-        down = e->type == SDL_MOUSEBUTTONDOWN;
-        up = e->type == SDL_MOUSEBUTTONUP;
+        down = (e->type == SDL_MOUSEBUTTONDOWN);
+        up = (e->type == SDL_MOUSEBUTTONUP);
         break;
     }
 #endif
     default:
         return;
     }
+
     g_seen = true;
     g_touch_ms = SDL_GetTicks();
     Finger *f = nullptr;
-    for (auto &g : g_fingers) if (g.used && g.id == id) f = &g;
+    for (auto &g : g_fingers) {
+        if (g.used && g.id == id) { f = &g; break; }
+    }
     if (down && !f) {
-        for (auto &g : g_fingers) if (!g.used) { f = &g; break; }
+        for (auto &g : g_fingers) {
+            if (!g.used) { f = &g; break; }
+        }
         if (!f) return;
         f->used = true;
         f->id = id;
         f->ok = hit_ok(x, y);
         f->button = f->ok ? -1 : hit_button(x, y);
         f->ptr = false;
-        // anything on the left half that is not a button drives the stick
-        f->stick = !f->ok && f->button < 0 && x < 0.5f;
+
+        // Stick zone: left half below top bar, not hit on a button
+        f->stick = (!f->ok && f->button < 0 && x < 0.45f && y > 0.20f);
 #ifdef GAME_USM
-        /* USM has no pad support: the overlay presses keys, and a finger on
-         * the right half drags the camera (the game reads the mouse). */
-        f->stick = !f->ok && f->button < 0 && x < 0.45f;
-        f->look = !f->ok && f->button < 0 && x >= 0.45f;
-        f->ptr = !f->ok && f->button < 0;
+        // Camera zone: right half where no action button was hit
+        f->look = (!f->ok && f->button < 0 && x >= 0.45f);
+        f->ptr = (!f->ok && f->button < 0);
+#else
+        f->stick = (!f->ok && f->button < 0 && x < 0.5f);
+        f->look = false;
 #endif
     }
     if (!f) return;
+
 #ifdef GAME_USM
-    /* USM's menus hit-test widgets against the *system cursor* (GetCursorPos)
-     * and its window procedure ignores every mouse message, so a touch that is
-     * not on an overlay button warps the virtual cursor and holds the left
-     * button: the menus become tappable and the in-game prompts follow the
-     * finger. The left button is bound to nothing in game, so the same gesture
-     * is harmless there. */
+    // Virtual cursor tap in menus
     if (f->ptr && down) {
         int w = 1280, h = 720;
         user32_screen(&w, &h);
@@ -308,15 +439,10 @@ extern "C" void touch_handle_event(const SDL_Event *e) {
         g_ptr_y = y;
         g_ptr_ms = SDL_GetTicks();
         user32_mouse_button(0, 1);
-        /* one line per tap: the only way to see, from port/log.txt, where a
-         * touch landed in the game's own cursor space */
         LOG("touch: tap %d,%d -> cursor %d,%d (screen %dx%d)", (int)(x * 1000), (int)(y * 1000),
             (int)(x * w), (int)(y * h), w, h);
     }
-    /* Dragging in the left half (the stick side) walks the cursor with the
-     * finger; in the right half the mouse deltas already do it (at the game's
-     * mouse sensitivity), so feeding both would double the movement. */
-    if (!down && !up && f->ptr && f->stick) {
+    if (!down && !up && f->ptr && f->stick && g_hud_menu) {
         int w = 1280, h = 720;
         user32_screen(&w, &h);
         user32_cursor_set((int)(x * w), (int)(y * h));
@@ -324,23 +450,39 @@ extern "C" void touch_handle_event(const SDL_Event *e) {
         g_ptr_y = y;
         g_ptr_ms = SDL_GetTicks();
     }
+    // Smooth camera swipe with sensitivity and optional invert-Y
     if (!down && !up && f->look) {
         int w = 0, h = 0;
-        extern void platform_window_size(int *, int *);
-        extern void platform_mouse_add(int, int);
         platform_window_size(&w, &h);
-        platform_mouse_add((int)((x - f->x) * w * 2.f), (int)((y - f->y) * h * 2.f));
-        g_ptr_x = x;
-        g_ptr_y = y;
-        g_ptr_ms = SDL_GetTicks();
-        g_look_ms = g_ptr_ms;
+        if (w > 0 && h > 0) {
+            float dx = (x - f->x) * (float)w * 2.2f * g_cam_sensitivity;
+            float dy = (y - f->y) * (float)h * 2.2f * g_cam_sensitivity * (g_cam_invert_y ? -1.0f : 1.0f);
+
+            // Responsive smoothing filter to eliminate hardware jitter
+            static float s_dx = 0.0f, s_dy = 0.0f;
+            s_dx = s_dx * 0.25f + dx * 0.75f;
+            s_dy = s_dy * 0.25f + dy * 0.75f;
+
+            platform_mouse_add((int)s_dx, (int)s_dy);
+            g_ptr_x = x;
+            g_ptr_y = y;
+            g_ptr_ms = SDL_GetTicks();
+            g_look_ms = g_ptr_ms;
+        }
     }
 #endif
     f->x = x;
     f->y = y;
-    if (up) f->used = false;
+    if (up) {
+        f->used = false;
+        f->button = -1;
+        f->stick = false;
+        f->look = false;
+        f->ptr = false;
+        f->ok = false;
+    }
 #ifdef GAME_USM
-    {   /* the button follows the fingers that are actually down (see user32.c) */
+    {
         int n = 0;
         for (auto &g : g_fingers)
             if (g.used && g.ptr) n++;

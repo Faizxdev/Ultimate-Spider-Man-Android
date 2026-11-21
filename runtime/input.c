@@ -212,7 +212,7 @@ void usm_input_update(void) {
         g_usm_b = b;
     }
     /* deadzone; the stick only reports changes when it crosses a direction */
-    const int DZ = 12000;
+    const int DZ = 8000;
     int dir[4] = {ly > DZ, ly < -DZ, lx < -DZ, lx > DZ};
     int olddir[4] = {g_usm_ly > DZ, g_usm_ly < -DZ, g_usm_lx < -DZ, g_usm_lx > DZ};
     for (int i = 0; i < 4; i++) {

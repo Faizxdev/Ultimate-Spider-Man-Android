@@ -12,7 +12,7 @@ extern "C" {
 
 #define ART_CELL 256
 #define ART_COLS 4
-#define ART_ROWS 6
+#define ART_ROWS 8
 #define ART_MAX (ART_COLS * ART_ROWS)
 #define ART_W (ART_COLS * ART_CELL)
 #define ART_H (ART_ROWS * ART_CELL)

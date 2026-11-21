@@ -24,7 +24,8 @@ static const struct { const char *key, *file; } k_art[] = {
     {"black", "hud_black.png"},         {"on/black", "on/hud_black_on.png"},
     {"pause", "hud_pause.png"},         {"on/pause", "on/hud_pause_on.png"},
     {"back", "hud_back.png"},           {"on/back", "on/hud_back_on.png"},
-    {"ok", "hud_ok.png"},               /* confirm: the menus are keyboard only */
+    {"ok", "hud_ok.png"},               {"on/ok", "on/hud_ok_on.png"},
+    {"tendril", "hud_tendril.png"},     {"on/tendril", "on/hud_tendril_on.png"},
     {"stick", "hud_stick.png"},         {"knob", "hud_stick_knob.png"},
     {"campad", "hud_campad.png"},       {"cursor", "hud_cursor.png"},
     {"skip", "hud_skip.png"},

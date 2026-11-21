@@ -661,6 +661,11 @@ SHIM(GetDlgItemTextA) {
 SHIM(SetDlgItemInt) { RET(1, 4); }
 SHIM(SetDlgItemTextA) { RET(1, 3); }
 SHIM(IsDialogMessage) { RET(0, 2); }
+SHIM(IsDialogMessageA) { RET(0, 2); }
+SHIM(RegisterWindowMessageA) {
+    static uint32_t next = 0xC000;
+    RET(next++, 1);
+}
 SHIM(GetMenuState) { RET(0, 3); }
 SHIM(CheckMenuItem) { RET(0, 3); }
 SHIM(EnableMenuItem) { RET(0, 3); }
@@ -721,14 +726,32 @@ SHIM(SHBrowseForFolderA) { RET(0, 1); }
 SHIM(SHGetPathFromIDList) { RET(0, 2); }
 SHIM(SHGetPathFromIDListA) { RET(0, 2); }
 
-SHIM(SysStringLen) { RET(ARG(0) ? M32(ARG(0) - 4) : 0, 1); }
+SHIM(SysStringLen) {
+    uint32_t s = ARG(0);
+    RET(s ? (M32(s - 4) >> 1) : 0, 1);
+}
 
 SHIM(VariantInit) {
     if (ARG(0)) memset(MEM + ARG(0), 0, 16);
     RET(0, 1);
 }
 
-SHIM(VariantClear) { RET(0, 1); }
+SHIM(VariantClear) {
+    if (ARG(0)) {
+        uint16_t vt = M16(ARG(0));
+        if (vt == 8 /* VT_BSTR */) {
+            uint32_t bstr = M32(ARG(0) + 8);
+            if (bstr) gfree(bstr - 4);
+        }
+        memset(MEM + ARG(0), 0, 16);
+    }
+    RET(0, 1);
+}
+
+SHIM(VariantCopy) {
+    if (ARG(0) && ARG(1)) memcpy(MEM + ARG(0), MEM + ARG(1), 16);
+    RET(0, 2);
+}
 
 SHIM(GetProcessMemoryInfo) {
     if (ARG(1)) memset(MEM + ARG(1), 0, ARG(2));
@@ -933,7 +956,8 @@ static const ShimDef defs[] = {
     U(CreateDialogParamA) U(LoadImageA) U(GetDlgCtrlID) U(GetNextDlgGroupItem)
     U(IsDlgButtonChecked) U(GetDlgItemInt) U(GetDlgItemTextA) U(SetDlgItemInt)
     U(SetDlgItemTextA) U(IsWindow) U(EnableWindow) U(RegisterClipboardFormatA)
-    U(GetParent) U(IsDialogMessage) U(GetFocus) U(GetMenuState) U(CheckMenuItem)
+    U(GetParent) U(IsDialogMessage) U(IsDialogMessageA) U(RegisterWindowMessageA)
+    U(GetFocus) U(GetMenuState) U(CheckMenuItem)
     U(EnableMenuItem) U(GetMenu) U(SetMenuItemInfoA) U(DrawMenuBar)
     U(ValidateRect) U(PtInRect)
 #undef U
@@ -958,12 +982,17 @@ static const ShimDef defs[] = {
 #undef SH
 
 #define O(n) {"oleaut32.dll", #n, shim_##n},
-    O(SysStringLen) O(VariantInit) O(VariantClear)
+    O(SysStringLen) O(VariantInit) O(VariantClear) O(VariantCopy)
 #undef O
+    {"oleaut32.dll", "#7", shim_SysStringLen},
+    {"oleaut32.dll", "#8", shim_VariantInit},
+    {"oleaut32.dll", "#9", shim_VariantClear},
+    {"oleaut32.dll", "#10", shim_VariantCopy},
 
     {"psapi.dll", "GetProcessMemoryInfo", shim_GetProcessMemoryInfo},
     {"advapi32.dll", "RegCreateKeyA", shim_RegCreateKeyA},
     {"ws2_32.dll", "gethostbyname", shim_gethostbyname},
+    {"ws2_32.dll", "#52", shim_gethostbyname},
     {NULL, NULL, NULL}
 };
 
